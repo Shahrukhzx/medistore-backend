@@ -1,3 +1,4 @@
+import { paginationHelper } from "../../helpers/paginationHelper";
 import { prisma } from "../../lib/prisma";
 
 const createCategory = async (name: string) => {
@@ -15,10 +16,26 @@ const createCategory = async (name: string) => {
 
 }
 
-const getAllCategories = async () => {
-    return await prisma.category.findMany({
-        orderBy: { name: "asc" },
-    });
+const getAllCategories = async (query: any) => {
+    const { page, limit, skip } = paginationHelper(query);
+
+    const [data, total] = await Promise.all([
+        prisma.category.findMany({
+            skip,
+            take: limit,
+        }),
+        prisma.category.count(),
+    ]);
+
+    return {
+        pagination: {
+            total,
+            page,
+            limit,
+            totalPages: Math.ceil(total / limit),
+        },
+        data,
+    };
 };
 
 const updateCategory = async (id: string, name: string) => {
