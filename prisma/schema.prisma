@@ -33,6 +33,7 @@ model Medicine {
   sellerId   String
 
   category Category @relation(fields: [categoryId], references: [id])
+  seller   User     @relation(fields: [sellerId], references: [id])
 
   reviews    Review[]
   orderItems OrderItem[]
@@ -50,6 +51,8 @@ model Order {
   customerId String
   status     OrderStatus @default(PLACED)
   address    String
+
+  customer User @relation(fields: [customerId], references: [id])
 
   subTotal       Decimal @db.Decimal(10, 2)
   taxAmount      Decimal @default(0) @db.Decimal(10, 2)
@@ -96,6 +99,7 @@ model Review {
   customerId String
   medicineId String
 
+  customer User     @relation(fields: [customerId], references: [id])
   medicine Medicine @relation(fields: [medicineId], references: [id])
 
   createdAt DateTime @default(now())
@@ -122,9 +126,12 @@ model User {
   sessions      Session[]
   accounts      Account[]
 
-  role   Role?   @default(CUSTOMER)
-  phone  String
-  status String? @default("ACTIVE")
+  role      Role?      @default(CUSTOMER)
+  phone     String
+  status    String?    @default("ACTIVE")
+  medicines Medicine[]
+  orders    Order[]
+  reviews   Review[]
 
   @@unique([email])
   @@map("user")
