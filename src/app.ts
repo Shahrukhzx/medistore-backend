@@ -4,6 +4,7 @@ import { auth } from './lib/auth';
 import cors from 'cors';
 import { CategoryRouter } from './modules/category/category.router';
 import { MedicineRouter } from './modules/medicine/medicine.router';
+import { OrderRouter } from './modules/order/order.router';
 
 const app = express();
 app.use(cors({
@@ -17,6 +18,8 @@ app.use(express.json());
 app.use("/api/categories", CategoryRouter)
 //Medicine Routes
 app.use("/api/medicines", MedicineRouter)
+//Order Routes
+app.use("/api/orders", OrderRouter)
 
 app.get('/', (req, res) => {
     res.send('Hello, World!');
