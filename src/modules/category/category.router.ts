@@ -6,6 +6,8 @@ const router = Router();
 
 // Public route to get list of categories
 router.get("/", CategoryController.getAllCategories);
+// Public route to get category by id
+router.get("/:id", CategoryController.getCategoryById);
 
 // Admin routes for creating categories
 router.post(

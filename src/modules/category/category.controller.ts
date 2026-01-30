@@ -23,6 +23,26 @@ const getAllCategories = async (req: Request, res: Response, next: NextFunction)
     }
 };
 
+const getCategoryById = async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+) => {
+    try {
+        const { id } = req.params;
+
+        if (!id) {
+            return res.status(400).json({ message: "Category id is required" });
+        }
+
+        const result = await CategoryService.getCategoryById(id as string);
+        res.status(200).json(result);
+    } catch (error) {
+        next(error);
+    }
+};
+
+
 const updateCategory = async (req: Request, res: Response, next: NextFunction) => {
     try {
         const { id } = req.params;
@@ -52,6 +72,7 @@ const deleteCategory = async (req: Request, res: Response, next: NextFunction) =
 export const CategoryController = {
     createCategory,
     getAllCategories,
+    getCategoryById,
     updateCategory,
     deleteCategory
 };
