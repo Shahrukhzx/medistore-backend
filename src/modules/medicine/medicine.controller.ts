@@ -19,9 +19,6 @@ const createMedicine = async (req: Request, res: Response, next: NextFunction) =
 
 const getAllMedicines = async (req: Request, res: Response) => {
     try {
-        console.log("req.user:", req.user);  // Debug log
-        console.log("req.user?.role:", req.user?.role);  // Debug log
-
         const { search, categoryId, sellerId, minPrice, maxPrice } = req.query;
 
         const { page, limit, skip, sortBy, sortOrder } =

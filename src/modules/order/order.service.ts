@@ -282,7 +282,7 @@ const updateOrder = async (orderId: string, payload: UpdateOrderPayload, userId:
     if (role === "SELLER") {
         const hasSellerMedicine = order.items.some(item => item.medicine.sellerId === userId);
         if (!hasSellerMedicine) {
-            throw new Error("Forbidden: You can only update orders that contain your medicines");
+            throw new Error("Forbidden: You can only update your orders");
         }
     }
 
@@ -313,7 +313,7 @@ const deleteOrder = async ({ orderId, userId, role }: DeleteOrderPayload) => {
     if (role === "SELLER") {
         const hasSellerMedicine = order.items.some(item => item.medicine.sellerId === userId);
         if (!hasSellerMedicine) {
-            throw new Error("Forbidden: You can only delete orders that contain your medicines");
+            throw new Error("Forbidden: You can only delete your orders");
         }
     }
 
