@@ -12,7 +12,6 @@ const createOrder = async (req: Request, res: Response, next: NextFunction) => {
 
         const { items, address } = req.body;
 
-        // Validation
         if (!items || !Array.isArray(items) || items.length === 0) {
             return res.status(400).json({
                 error: "Validation error",
@@ -58,8 +57,9 @@ const createOrder = async (req: Request, res: Response, next: NextFunction) => {
 
 const getAllOrders = async (req: Request, res: Response, next: NextFunction) => {
     try {
-        const { customerId: queryCustomerId, status } = req.query;
+        if (!req.user) throw new Error("Unauthorized");
 
+        const { customerId: queryCustomerId, status } = req.query;
         const { page, limit, skip, sortBy, sortOrder } = paginationSortingHelper(req.query);
 
         const payload: any = {
@@ -70,25 +70,47 @@ const getAllOrders = async (req: Request, res: Response, next: NextFunction) => 
             sortOrder,
         };
 
-        if (
-            typeof status === "string" &&
-            Object.values(OrderStatus).includes(status as OrderStatus)
-        ) {
+        // Add status if valid
+        if (typeof status === "string" && Object.values(OrderStatus).includes(status as OrderStatus)) {
             payload.status = status;
         }
 
-        // Role-based customerId filtering
-        if (req.user?.role === UserRole.CUSTOMER) {
-            payload.customerId = req.user.id; // customer sees only their orders
-        } else if (req.user?.role === UserRole.ADMIN && typeof queryCustomerId === "string") {
-            payload.customerId = queryCustomerId; // admin can filter by customerId
+        let result;
+
+        switch (req.user.role) {
+            case UserRole.CUSTOMER:
+                payload.customerId = req.user.id; // customer sees only their orders
+                result = await OrderService.getAllOrders(payload);
+                break;
+
+            case UserRole.SELLER:
+                // Seller sees orders containing their medicines
+                result = await OrderService.getOrdersForSeller(
+                    req.user.id,
+                    payload.page,
+                    payload.limit,
+                    payload.skip,
+                    payload.sortBy,
+                    payload.sortOrder
+                );
+                break;
+
+            case UserRole.ADMIN:
+                // Admin can filter by customerId if provided
+                if (typeof queryCustomerId === "string") payload.customerId = queryCustomerId;
+                result = await OrderService.getAllOrders(payload);
+                break;
+
+            default:
+                throw new Error("Unauthorized role");
         }
-        const result = await OrderService.getAllOrders(payload);
+
         res.status(200).json(result);
     } catch (error) {
         next(error);
     }
 };
+
 
 const getOrderById = async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -105,8 +127,37 @@ const getOrderById = async (req: Request, res: Response, next: NextFunction) => 
     }
 };
 
+const updateOrder = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const { id } = req.params;
+        const { status, address } = req.body;
+
+        if (!req.user) throw new Error("Unauthorized");
+
+        const updatedOrder = await OrderService.updateOrder(id as string, { status, address }, req.user.id, req.user.role);
+        res.status(200).json(updatedOrder);
+    } catch (error) {
+        next(error);
+    }
+};
+
+const deleteOrder = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const { id } = req.params;
+
+        if (!req.user) throw new Error("Unauthorized");
+
+        const result = await OrderService.deleteOrder({ orderId: id, userId: req.user.id, role: req.user.role });
+        res.status(200).json(result);
+    } catch (error) {
+        next(error);
+    }
+};
+
 export const OrderController = {
     createOrder,
     getAllOrders,
-    getOrderById
+    getOrderById,
+    updateOrder,
+    deleteOrder
 };

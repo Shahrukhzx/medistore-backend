@@ -1,6 +1,7 @@
 import { NextFunction, Request, Response } from "express";
 import { MedicineService } from "./medicine.service";
 import paginationSortingHelper from '../../helpers/paginationSortingHelper';
+import { UserRole } from "../../middlewares/auth";
 
 
 const createMedicine = async (req: Request, res: Response, next: NextFunction) => {
@@ -18,6 +19,9 @@ const createMedicine = async (req: Request, res: Response, next: NextFunction) =
 
 const getAllMedicines = async (req: Request, res: Response) => {
     try {
+        console.log("req.user:", req.user);  // Debug log
+        console.log("req.user?.role:", req.user?.role);  // Debug log
+
         const { search, categoryId, sellerId, minPrice, maxPrice } = req.query;
 
         const { page, limit, skip, sortBy, sortOrder } =
@@ -39,7 +43,10 @@ const getAllMedicines = async (req: Request, res: Response) => {
             payload.categoryId = categoryId;
         }
 
-        if (typeof sellerId === "string") {
+        // seller can only view their own medicines
+        if (req.user?.role === UserRole.SELLER) {
+            payload.sellerId = req.user.id;
+        } else if (typeof sellerId === "string") {
             payload.sellerId = sellerId;
         }
 
@@ -66,6 +73,13 @@ const getMedicineById = async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
         const result = await MedicineService.getMedicineById(id as string);
+        // Seller can only view their own medicines
+        if (req.user?.role === UserRole.SELLER && result.sellerId !== req.user.id) {
+            return res.status(403).json({
+                error: "Forbidden",
+                message: "You can only view your own medicines",
+            });
+        }
         res.status(200).json(result);
     } catch (error) {
         res.status(400).json({

@@ -49,6 +49,7 @@ model Medicine {
 model Order {
   id         String      @id @default(uuid())
   customerId String
+  sellerId   String
   status     OrderStatus @default(PLACED)
   address    String
 
@@ -64,6 +65,7 @@ model Order {
 
   createdAt DateTime @default(now())
 
+  @@index([sellerId])
   @@index([customerId])
   @@index([status])
   @@map("orders")
@@ -76,7 +78,7 @@ model OrderItem {
   quantity   Int     @db.Integer
   price      Decimal @db.Decimal(10, 2)
 
-  order    Order    @relation(fields: [orderId], references: [id])
+  order    Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
   medicine Medicine @relation(fields: [medicineId], references: [id])
 
   @@index([medicineId])

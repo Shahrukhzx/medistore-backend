@@ -21,6 +21,17 @@ type GetAllOrdersPayload = {
     status?: OrderStatus;
     customerId?: string;
 };
+type UpdateOrderPayload = {
+    orderId: string;
+    status?: OrderStatus;
+    address?: string;
+};
+
+type DeleteOrderPayload = {
+    orderId: string;
+    userId: string;
+    role: "ADMIN" | "SELLER";
+};
 
 
 const createOrder = async (payload: CreateOrderPayload) => {
@@ -39,6 +50,12 @@ const createOrder = async (payload: CreateOrderPayload) => {
         throw new Error("Medicine not found");
     }
 
+    const sellerIds = new Set(medicines.map(m => m.sellerId))
+    if (sellerIds.size !== 1) {
+        throw new Error("Order must contain medicines from a single seller.")
+    }
+
+    const sellerId = medicines[0]?.sellerId
     // Check stock availability
     const medicineMap = new Map(medicines.map((m) => [m.id, m]));
     items.forEach((item) => {
@@ -47,7 +64,7 @@ const createOrder = async (payload: CreateOrderPayload) => {
             throw new Error(`Medicine with ID ${item.medicineId} not found`);
         }
         if (medicine.stock < item.quantity) {
-            throw new Error(`Insufficient stock for ${medicine.name}. Available: ${medicine.stock}, Requested: ${item.quantity}`);
+            throw new Error(`Insufficient stock for ${medicine.name}.`);
         }
     });
 
@@ -60,7 +77,7 @@ const createOrder = async (payload: CreateOrderPayload) => {
 
     const taxAmount = +(subTotal * 0.05).toFixed(2); // 5% tax
     const shippingFee = 80; //  shipping fee
-    const discountAmount = 0; // apply coupons if needed
+    const discountAmount = 0;
     const totalAmount = subTotal + taxAmount + shippingFee - discountAmount;
 
     // Create order in transaction
@@ -68,6 +85,7 @@ const createOrder = async (payload: CreateOrderPayload) => {
         const newOrder = await tx.order.create({
             data: {
                 customerId,
+                sellerId,
                 address,
                 subTotal: new Prisma.Decimal(subTotal),
                 taxAmount: new Prisma.Decimal(taxAmount),
@@ -166,6 +184,7 @@ const getAllOrders = async (payload: GetAllOrdersPayload) => {
     };
 };
 
+
 const getOrderById = async (orderId: string) => {
     const result = await prisma.order.findUnique({
         where: { id: orderId },
@@ -200,10 +219,130 @@ const getOrderById = async (orderId: string) => {
 
     return result;
 };
+
+const getOrdersForSeller = async (
+    sellerId: string,
+    page: number,
+    limit: number,
+    skip: number,
+    sortBy: string,
+    sortOrder: "asc" | "desc"
+) => {
+    // Fetch orders with only seller items
+    const orders = await prisma.order.findMany({
+        take: limit,
+        skip,
+        orderBy: { [sortBy]: sortOrder },
+        where: { items: { some: { medicine: { sellerId } } } },
+        include: {
+            items: {
+                where: { medicine: { sellerId } }, // fetch only seller items
+                include: { medicine: { select: { id: true, name: true, price: true, sellerId: true } } },
+            },
+            customer: { select: { id: true, name: true, email: true } },
+        },
+    });
+
+    // Recalculate totals only for seller items
+    const virtualOrders = orders.map(order => {
+        const subTotal = order.items.reduce((sum, item) => sum + Number(item.price) * item.quantity, 0);
+        const taxAmount = +(subTotal * 0.05).toFixed(2);
+        const shippingFee = 0; // since its otc
+        const discountAmount = 0;
+        const totalAmount = subTotal + taxAmount + shippingFee - discountAmount;
+
+        return { ...order, subTotal, taxAmount, shippingFee, discountAmount, totalAmount };
+    });
+
+    // Count total orders (reuse same where clause)
+    const total = await prisma.order.count({
+        where: { items: { some: { medicine: { sellerId } } } },
+    });
+
+    return {
+        data: virtualOrders,
+        pagination: {
+            total,
+            page,
+            limit,
+            totalPages: Math.ceil(total / limit),
+        },
+    };
+};
+
+const updateOrder = async (orderId: string, payload: UpdateOrderPayload, userId: string, role: string) => {
+    const order = await prisma.order.findUnique({
+        where: { id: orderId },
+        include: { items: { include: { medicine: true } } },
+    });
+
+    if (!order) throw new Error("Order not found");
+
+    // Seller restriction: can only update orders containing their medicines
+    if (role === "SELLER") {
+        const hasSellerMedicine = order.items.some(item => item.medicine.sellerId === userId);
+        if (!hasSellerMedicine) {
+            throw new Error("Forbidden: You can only update orders that contain your medicines");
+        }
+    }
+
+    const updatedOrder = await prisma.order.update({
+        where: { id: orderId },
+        data: {
+            status: payload.status ?? order.status,
+            address: payload.address ?? order.address,
+        },
+        include: {
+            items: { include: { medicine: true } },
+            customer: { select: { id: true, name: true, email: true } },
+        },
+    });
+
+    return updatedOrder;
+};
+
+const deleteOrder = async ({ orderId, userId, role }: DeleteOrderPayload) => {
+    const order = await prisma.order.findUnique({
+        where: { id: orderId },
+        include: { items: { include: { medicine: true } } },
+    });
+
+    if (!order) throw new Error("Order not found");
+
+    // Seller restriction
+    if (role === "SELLER") {
+        const hasSellerMedicine = order.items.some(item => item.medicine.sellerId === userId);
+        if (!hasSellerMedicine) {
+            throw new Error("Forbidden: You can only delete orders that contain your medicines");
+        }
+    }
+
+    // Restore stock before deletion
+    await prisma.$transaction(async (tx) => {
+        for (const item of order.items) {
+            await tx.medicine.update({
+                where: { id: item.medicineId },
+                data: { stock: { increment: item.quantity } },
+            });
+        }
+
+        await tx.orderItem.deleteMany({ where: { orderId } });
+        await tx.order.delete({ where: { id: orderId } });
+    });
+
+    return { message: "Order deleted successfully" };
+};
+
+
+
+
 export const OrderService = {
     createOrder,
     getAllOrders,
-    getOrderById
+    getOrderById,
+    getOrdersForSeller,
+    updateOrder,
+    deleteOrder
 };
 
 
